@@ -49,7 +49,7 @@ class Scanner
 end
 
 class Wordlist
-  ENVIRONMENTS = %w(dev stage s3 staging prod)
+  ENVIRONMENTS = %w(dev development stage s3 staging prod production test)
   PERMUTATIONS = %i(permutation_raw permutation_envs permutation_host)
 
   class << self
