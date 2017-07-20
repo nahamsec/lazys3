@@ -1,97 +1,101 @@
 #!/usr/bin/env ruby
-require 'io/console'
 require 'net/http'
-require 'open-uri'
-require 'resolv'
-require 'socket'
 require 'timeout'
 
+class String
+  def red; "\e[31m#{self}\e[0m" end
+end
 
+class S3
+  attr_reader :bucket, :domain, :code
 
-def get_pattern(targetURI)
-  File.open("common_bucket_prefixes.txt", "r") do |f|
-    f.each_line do |line|
-      dotted_wordlist = line.chomp+"."
-      dashed_wordlist = line.chomp+"-"
-      prefix_host = ".s3.amazonaws.com"
-      envs = ['dev', 'stage', 's3', 'staging', 'prod']
-      $n = 0
-      $total = 7
-      while $n < $total do
-        $n += 1
-        case $n
-        when 1
-            fc_target = targetURI+"#{prefix_host}"
-            get_response_code fc_target
-        when 2
-          envs.each do |env|
-            c_wordlist = dashed_wordlist
-            fc_target = c_wordlist+targetURI+"-"+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
-            c_wordlist = dotted_wordlist
-            fc_target = c_wordlist+targetURI+"-"+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
+  def initialize(bucket)
+    @bucket = bucket
+    @domain = format('http://%s.s3.amazonaws.com', bucket)
+  end
+
+  def exists?
+    code != 404
+  end
+
+  def code
+    http && http.code.to_i
+  end
+
+  private
+
+  def http
+    Timeout::timeout(5) do
+      @http ||= Net::HTTP.get_response(URI.parse(@domain))
+    end
+  rescue
+  end
+end
+
+class Scanner
+  def initialize(list)
+    @list = list
+  end
+
+  def scan
+    @list.each do |word|
+      bucket = S3.new word
+
+      if bucket.exists?
+        puts "Found bucket: #{bucket.bucket} (#{bucket.code})".red
+      end
+    end
+  end
+end
+
+class Wordlist
+  ENVIRONMENTS = %w(dev stage s3 staging prod)
+  PERMUTATIONS = %i(permutation_raw permutation_envs permutation_host)
+
+  class << self
+    def generate(common_prefix, prefix_wordlist)
+      [].tap do |list|
+        PERMUTATIONS.each do |permutation|
+          list << send(permutation, common_prefix, prefix_wordlist)
+        end
+      end.flatten.uniq
+    end
+
+    def from_file(prefix, file)
+      generate(prefix, IO.read(file).split("\n"))
+    end
+
+    def permutation_raw(common_prefix, _prefix_wordlist)
+      common_prefix
+    end
+
+    def permutation_envs(common_prefix, prefix_wordlist)
+      [].tap do |permutations|
+        prefix_wordlist.each do |word|
+          ENVIRONMENTS.each do |environment|
+            ['%s-%s-%s', '%s-%s.%s', '%s-%s%s', '%s.%s-%s', '%s.%s.%s'].each do |bucket_format|
+              permutations << format(bucket_format, common_prefix, word, environment)
+            end
           end
-        when 3
-          envs.each do |env|
-            c_wordlist = dashed_wordlist
-            fc_target = c_wordlist+targetURI+"."+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
-            c_wordlist = dotted_wordlist
-            fc_target = c_wordlist+targetURI+"."+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
+        end
+      end
+    end
+
+    def permutation_host(common_prefix, prefix_wordlist)
+      [].tap do |permutations|
+        prefix_wordlist.each do |word|
+          ['%s.%s', '%s-%s', '%s%s'].each do |bucket_format|
+            permutations << format(bucket_format, common_prefix, word)
+            permutations << format(bucket_format, word, common_prefix)
           end
-        when 4
-          envs.each do |env|
-            c_wordlist = dashed_wordlist
-            fc_target = c_wordlist+targetURI+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
-            c_wordlist = dotted_wordlist
-            fc_target = c_wordlist+targetURI+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
-          end
-        when 5
-            c_wordlist = dashed_wordlist
-            fc_target = c_wordlist+targetURI+"#{prefix_host}"
-            get_response_code fc_target
-            c_wordlist = dotted_wordlist
-            fc_target = c_wordlist+targetURI+"#{prefix_host}"
-            get_response_code fc_target
-        when 6
-          envs.each do |env|
-            c_wordlist = dashed_wordlist
-            fc_target = targetURI+"-"+c_wordlist+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
-            c_wordlist = dotted_wordlist
-            fc_target = targetURI+"-"+c_wordlist+"#{env}"+"#{prefix_host}"
-            get_response_code fc_target
-          end
-        else
         end
       end
     end
   end
 end
 
-def get_response_code(fc_target)
-  begin
-    target = "http://"+fc_target
-      Timeout::timeout(5) {
-        res = Net::HTTP.get_response(URI.parse(target))
-        getCode = res.code
-        if getCode != "404"
-          puts fc_target + " bucket exist".red
-        end
-      }
+wordlist = Wordlist.from_file(ARGV[0], 'common_bucket_prefixes.txt')
 
-    rescue Timeout::Error
-    rescue URI::InvalidURIError
-    rescue SocketError
-    rescue Errno::ECONNREFUSED
-    end
-end
+puts "Generated wordlist from file, #{wordlist.length} items..."
 
-system "clear"
-puts "Enter company name (Example: Yahoo)"
-getURI = gets.chomp
-get_pattern getURI
+Scanner.new(wordlist).scan
