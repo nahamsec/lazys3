@@ -94,7 +94,7 @@ class Wordlist
   end
 end
 
-wordlist = Wordlist.from_file(ARGV[0], 'common_bucket_prefixes.txt')
+wordlist = Wordlist.from_file(ARGV[0], File.join(__dir__, 'common_bucket_prefixes.txt'))
 
 puts "Generated wordlist from file, #{wordlist.length} items..."
 
