@@ -61,8 +61,8 @@ class Wordlist
       end.flatten.uniq
     end
 
-    def from_file(prefix, file)
-      generate(prefix, IO.read(file).split("\n"))
+    def from_file(file)
+      IO.read(file).split("\n")
     end
 
     def permutation_raw(common_prefix, _prefix_wordlist)
@@ -94,8 +94,16 @@ class Wordlist
   end
 end
 
-wordlist = Wordlist.from_file(ARGV[0], 'common_bucket_prefixes.txt')
+wordlist_file = ARGV[0]
+common_prefix = ARGV[1]
 
-puts "Generated wordlist from file, #{wordlist.length} items..."
+if wordlist_file.nil? || common_prefix.nil?
+  puts "Usage: ruby script.rb <wordlist_file> <common_prefix>"
+  exit
+end
+
+wordlist = Wordlist.generate(common_prefix, Wordlist.from_file(wordlist_file))
+
+puts "Generated wordlist, #{wordlist.length} items..."
 
 Scanner.new(wordlist).scan
