@@ -15,4 +15,4 @@ $ ruby lazys3.rb <BUCKET_WORDLIST> <COMPANY>
 
 # Changelog 
 
-1.0 - Release
+1.1 - Release
